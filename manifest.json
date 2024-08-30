@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Video Bookmark",
+  "version": "1.0",
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "sidePanel"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Click to open panel"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}
