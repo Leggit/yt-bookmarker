@@ -4,19 +4,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const bookmarksContainer = document.getElementById("bookmarks");
   const searchInput = document.getElementById("search");
 
+  displayAllBookmarks();
   updateUi();
 
+  // setup event listeners
+  searchInput.addEventListener("input", () => filterBookmarks());
+  saveButton.addEventListener("click", () => addBookmark());
   chrome.tabs.onActivated.addListener(() => updateUi());
   chrome.tabs.onUpdated.addListener(() => updateUi());
 
-  // Load bookmarks when popup is opened
-  chrome.storage.sync.get(["bookmarks"], (result) => {
-    const bookmarks = result.bookmarks || {};
-    displayBookmarks(bookmarks);
-  });
+  function displayAllBookmarks() {
+    chrome.storage.sync.get(["bookmarks"], (result) => {
+      const bookmarks = result.bookmarks || {};
+      displayBookmarks(bookmarks);
+    });
+  }
 
-  // Save the current video and timestamp
-  saveButton.addEventListener("click", () => {
+  function addBookmark() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const videoId = new URL(tabs[0].url).searchParams.get("v");
 
@@ -31,9 +35,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       );
     });
-  });
+  }
 
-  searchInput.addEventListener("input", (event) => {
+  function filterBookmarks() {
     chrome.storage.sync.get(["bookmarks"], (result) => {
       const bookmarks = result.bookmarks || {};
       if (!searchInput.value) {
@@ -41,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         const filteredBookMarks = Object.keys(bookmarks)
           .map((id) => [id, bookmarks[id]])
-          .filter(([id, bookmark]) =>
+          .filter(([_, bookmark]) =>
             bookmark.title
               .toLowerCase()
               .includes(searchInput.value.toLowerCase())
@@ -50,22 +54,24 @@ document.addEventListener("DOMContentLoaded", () => {
             acc[curr[0]] = curr[1];
             return acc;
           }, {});
-        console.log(filteredBookMarks);
         displayBookmarks(filteredBookMarks);
       }
     });
-  });
+  }
 
   function updateUi() {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
       const url = new URL(tab.url);
       if (
         url.origin === "https://www.youtube.com" &&
         url.pathname === "/watch"
       ) {
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          action: "getVideoTitle",
+        });
         saveButton.disabled = false;
         videoName.disabled = false;
-        videoName.value = tab.title;
+        videoName.value = response.result;
       } else {
         saveButton.disabled = true;
         videoName.disabled = true;
@@ -100,39 +106,52 @@ document.addEventListener("DOMContentLoaded", () => {
 
     for (const [videoId, bookmark] of Object.entries(bookmarks)) {
       const bookmarkElement = document.createElement("li");
-      bookmarkElement.className = "list-group-item border-0 p-0 mb-3 nav-item";
+      bookmarkElement.className =
+        "list-group-item border-0 p-0 mb-3 nav-item d-flex";
 
-      const titlDiv = document.createElement("a");
-      titlDiv.className = "d-block mb-1 fw-bold nav-link p-0 m-0";
-      titlDiv.textContent =
-        bookmark.title + " - " + formatTimeStamp(bookmark.timestamp);
-      titlDiv.href = `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(
+      const linkContainer = document.createElement("a");
+      linkContainer.href = `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(
         bookmark.timestamp
       )}s`;
-      titlDiv.target = "_blank";
+      linkContainer.target = "_blank";
+      linkContainer.className = "d-block mb-1 nav-link p-0 m-0";
+
+      const titleDiv = document.createElement("div");
+      titleDiv.textContent = bookmark.title + " - ";
+      titleDiv.href = `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(
+        bookmark.timestamp
+      )}s`;
+      titleDiv.target = "_blank";
+
+      const timestampDiv = document.createElement("div");
+      timestampDiv.className = "badge bg-light text-dark";
+      timestampDiv.textContent = formatTimeStamp(bookmark.timestamp);
+
+      const removeContainer = document.createElement("div");
+      removeContainer.className = "d-flex flex-row justify-content-center ps-1";
 
       const removeButton = document.createElement("button");
-      removeButton.className = "btn btn-sm btn-danger rounded-pill";
-      removeButton.textContent = "Remove";
+      removeButton.className =
+        "btn btn-sm btn-outline-danger bi bi-x-lg m-auto rounded-pill";
       removeButton.addEventListener("click", () => {
         removeBookmark(videoId);
       });
 
-      bookmarkElement.appendChild(titlDiv);
-      bookmarkElement.appendChild(removeButton);
+      linkContainer.appendChild(titleDiv);
+      linkContainer.appendChild(timestampDiv);
+      removeContainer.appendChild(removeButton);
+      bookmarkElement.appendChild(linkContainer);
+      bookmarkElement.appendChild(removeContainer);
       bookmarksContainer.appendChild(bookmarkElement);
     }
   }
 
-  // Remove a bookmark
   function removeBookmark(videoId) {
     chrome.storage.sync.get(["bookmarks"], (result) => {
       const bookmarks = result.bookmarks || {};
       delete bookmarks[videoId];
 
-      chrome.storage.sync.set({ bookmarks }, () => {
-        displayBookmarks(bookmarks);
-      });
+      chrome.storage.sync.set({ bookmarks }, () => displayBookmarks(bookmarks));
     });
   }
 });
